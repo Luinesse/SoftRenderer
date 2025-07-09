@@ -9,7 +9,7 @@ public:
 	int minY, maxY;
 public:
 	Triangle() {}
-	Triangle(const Vec2& x1, const Vec2& x2, const Vec2& x3) : v0(x1), v1(x2), v2(x3) {}
+	Triangle(const Vec2& x1, const Vec2& x2, const Vec2& x3) : v0(x1), v1(x2), v2(x3), minX(0), maxX(0), minY(0), maxY(0) {}
 
 	// 벡터의 외적을 활용한 CCW 검사.
 	// 2차원 벡터의 외적은 3차원 외적에서 Z축 성분만을 계산. (0, 0, z)
@@ -19,13 +19,9 @@ public:
 	}
 
 	// 삼각형 내부인지 검사
-	bool IsInTriangle(const Vec2& p) {
-		float w0 = EdgeFunction(v0, v1, p);
-		float w1 = EdgeFunction(v1, v2, p);
-		float w2 = EdgeFunction(v2, v0, p);
-
-		return (w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0);
-	}
+	bool IsInTriangle(const Vec2& p);
+	void ComputeBarycentric(Vec2& p);
 
 	void SetBoundingBox(int screenWidth, int screenHeight);
+	
 };

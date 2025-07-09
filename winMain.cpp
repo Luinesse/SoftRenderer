@@ -189,10 +189,23 @@ void Render(HWND hWnd) {
         for (int y = tri.minY; y <= tri.maxY; y++) {
             Vec2 point(static_cast<float>(x), static_cast<float>(y));
 
+            /*
+            
+            점 내부 판별 및 바운딩 박스 확인 코드
+
             // point가 삼각형 내부에 있는지 확인하고 있다면 파란색, 아니라면 빨간색으로 출력
             // 이를 통해 바운딩박스의 크기 확인 가능
             if (tri.IsInTriangle(point)) SetPixel(x, y, 0, 0, 255);
             else SetPixel(x, y, 255, 0, 0);
+            
+            */
+
+            if (tri.IsInTriangle(point)) {
+                // 해당 정점의 위치가 삼각형 내부에서 어느 정점에 가중치가 더 높은가
+                tri.ComputeBarycentric(point);
+                // 얻어낸 가중치로 색상 칠하기.
+                SetPixel(x, y, 255 * point.r, 255 * point.g, 255 * point.b);
+            }
         }
     }
 

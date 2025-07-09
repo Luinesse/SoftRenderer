@@ -4,8 +4,10 @@
 class Vec2 {
 public:
 	float x, y;
+	// 삼각형을 그릴때 사용할 색상을 저장.
+	float r, g, b;
 public:
-	Vec2() : x(0), y(0) {
+	Vec2() : x(0), y(0), r(255), g(255), b(255) {
 
 	}
 
