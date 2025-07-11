@@ -106,6 +106,25 @@ Matrix Matrix::RotationZ(float rad)
 	return mat;
 }
 
+Matrix Matrix::PerspectiveFovLH(float fovY, float aspect, float zNear, float zFar)
+{
+	Matrix mat;
+
+	float yScale = 1.0f / tanf(fovY * 0.5f);
+	float xScale = yScale / aspect;
+
+	// 왼손 좌표계 기준 4 By 4 투영 행렬 초기화
+
+	mat.m[0][0] = xScale;								// 종횡비에 따라 x 방향 비율 정함. (xScale)
+	mat.m[1][1] = yScale;								// 수직 시야각 / 2 의 tan값으로 화면의 절반 높이가 원점(카메라)로 부터 얼마나 떨어져있는지 확인. 그에 따라 시야가 좁아지거나 넓어짐. (카메라의 줌과 비슷하다고 한다)
+	mat.m[2][2] = zFar / (zFar - zNear);				// 카메라 기준 가장 가까운 근평면과 가장 먼 평면간의 깊이 값을 0~1 범위로 정규화.
+	mat.m[2][3] = (-zNear * zFar) / (zFar - zNear);		// z값이 zNear와 같다면, 0 zFar와 같다면 1로 정규화해준다.
+	mat.m[3][2] = 1.0f;									// 투영행렬을 거치면 4차원 벡터가 만들어지는데 거기서 w값이 정해지는데 역할을함. 이렇게 해주어야 이 w값이 z값과 연관이 생겨 원근감이 생긴다. (원근 나눗셈을 수행하니까)
+	mat.m[3][3] = 0.0f;									// 0이어야 w 분모가 생겨서 원근나눗셈 적용가능. 1이라면 직교투영 (Orthographic)
+
+	return mat;
+}
+
 // 두 행렬의 곱
 
 Matrix Matrix::operator*(const Matrix& _m) const

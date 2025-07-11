@@ -2,6 +2,9 @@
 #include <iostream>
 #include "LA_Matrix.h"
 #include "Triangle.h"
+#include "RenderingUtils.h"
+
+#define PI 3.14
 
 using namespace std;
 
@@ -176,12 +179,67 @@ void SetPixel(int x, int y, BYTE r, BYTE g, BYTE b) {
 }
 
 void Render(HWND hWnd) {
+    ClearBuffer(255, 255, 255);
+
+    // Z = 5 위치에 삼각형을 그린다.
+    // 사용된 좌표는 월드 공간 좌표이다. (3D)
+    Triangle tri(Vec3(0, 1, 5), Vec3(1, -1, 7), Vec3(-1, -1, 3));
+
+    Vec3 cameraPos(0, 0, 0);
+    // 카메라와 삼각형이 마주보는지 확인한다. (Back-face Culling)
+    if (!tri.IsFrontFacing(cameraPos))   return;
+
+    // 카메라의 종횡비와 근평면과 원평면 (절두체 시작부분과 끝부분 정도일려나)
+    float aspect = static_cast<float>(SCREEN_WIDTH) / static_cast<float>(SCREEN_HEIGHT);
+    float zNear = 1.0f;
+    float zFar = 100.0f;
+    // 투영행렬 생성
+    Matrix proj = Matrix::PerspectiveFovLH(PI / 2.0f, aspect, zNear, zFar);
+
+    // 클립 공간의 정점 생성 (클립 공간으로 변환)
+    // 클립 공간에서는 클리핑을 수행해야하지만 아직은 생략하고 넘어간다.
+    // 언제 클리핑을 하는가 ? EX) 삼각형의 정점들이 절두체의 원평면보다 뒤에 있다면 ? 그리지 않는다. 혹은 근평면보다 가깝다면 ? 그리지 않는다. 좌우로 벗어나도 똑같다.
+    Vec4 p0 = proj * Vec4(tri.vt0, 1.0f);
+    Vec4 p1 = proj * Vec4(tri.vt1, 1.0f);
+    Vec4 p2 = proj * Vec4(tri.vt2, 1.0f);
+
+    // 원근 나눗셈을 통한 Vec3 변환
+    // NDC 좌표를 얻게된다.
+    Vec3 ndc0 = PerspectiveDivide(p0);
+    Vec3 ndc1 = PerspectiveDivide(p1);
+    Vec3 ndc2 = PerspectiveDivide(p2);
+
+    // 뷰포트 변환을 통해 NDC좌표를 2D 스크린 좌표로 변환
+    tri.v0 = ViewportTransform(ndc0, SCREEN_WIDTH, SCREEN_HEIGHT);
+    tri.v1 = ViewportTransform(ndc1, SCREEN_WIDTH, SCREEN_HEIGHT);
+    tri.v2 = ViewportTransform(ndc2, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+    // 바운딩 박스 생성 (AABB를 이용한 2D좌표에서의 단순클리핑)
+    tri.SetBoundingBox(SCREEN_WIDTH, SCREEN_HEIGHT);
+
+    // 스크린 좌표의 픽셀이 삼각형 내부에 존재하는지 확인 후 무게 중심 좌표계를 통하여 색상 보간 색칠.
+    for (int x = tri.minX; x <= tri.maxX; x++) {
+        for (int y = tri.minY; y <= tri.maxY; y++) {
+            Vec2 point(static_cast<float>(x), static_cast<float>(y));
+            if (tri.IsInTriangle(point)) {
+                tri.ComputeBarycentric(point);
+                SetPixel(x, y, 255 * point.r, 255 * point.g, 255 *point.b);
+            }
+        }
+    }
+
+    // 여기서 부턴 스크린 좌표에 삼각형 정점을 찍어 렌더링 후, 무게중심 좌표계를 통해 색상 보간 수행.
+    /*
+
     // 만일, Render에서 그리는 내용이 변경될 때를 대비하여 ClearBuffer 함수를 Render 최상단에 바로 실행해준다.
     // 그럼 변경이 있을 때, 이전의 내용을 지우고 다시 그리므로, 애니메이션의 형태를 그릴 수 있다.
     // 이러한 작업을 하지 않았다면, 애니메이션 시 잔상이 남게 될 것.
     ClearBuffer(255, 255, 255);
 
-    Triangle tri(Vec2(300, 100), Vec2(100, 300), Vec2(600, 300));
+    // 앞면으로 만들어주기 위해 정점 위치를 바꿔줌.
+    Triangle tri(Vec2(300, 100), Vec2(600, 300), Vec2(100, 300));
+
+    if (!tri.IsFrontFacing())    return;
 
     tri.SetBoundingBox(SCREEN_WIDTH, SCREEN_HEIGHT);
 
@@ -189,16 +247,16 @@ void Render(HWND hWnd) {
         for (int y = tri.minY; y <= tri.maxY; y++) {
             Vec2 point(static_cast<float>(x), static_cast<float>(y));
 
-            /*
             
-            점 내부 판별 및 바운딩 박스 확인 코드
+            
+            // 점 내부 판별 및 바운딩 박스 확인 코드
 
             // point가 삼각형 내부에 있는지 확인하고 있다면 파란색, 아니라면 빨간색으로 출력
             // 이를 통해 바운딩박스의 크기 확인 가능
-            if (tri.IsInTriangle(point)) SetPixel(x, y, 0, 0, 255);
-            else SetPixel(x, y, 255, 0, 0);
+            // if (tri.IsInTriangle(point)) SetPixel(x, y, 0, 0, 255);
+            // else SetPixel(x, y, 255, 0, 0);
             
-            */
+            
 
             if (tri.IsInTriangle(point)) {
                 // 해당 정점의 위치가 삼각형 내부에서 어느 정점에 가중치가 더 높은가
@@ -212,4 +270,6 @@ void Render(HWND hWnd) {
     SetPixel(300, 100, 255, 0, 0);
     SetPixel(100, 300, 255, 0, 0);
     SetPixel(600, 300, 255, 0, 0);
+
+    */
 }

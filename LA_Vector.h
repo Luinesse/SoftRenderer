@@ -122,6 +122,10 @@ public:
 
 	}
 
+	Vec4(Vec3 xyz, float w) : x(xyz.x), y(xyz.y), z(xyz.z), w(w) {
+
+	}
+
 	Vec4 operator+ (const Vec4& v) const {
 		return Vec4(x + v.x, y + v.y, z + v.z, w + v.w);
 	}
