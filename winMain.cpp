@@ -19,6 +19,11 @@ HDC g_hMemDC;
 const int SCREEN_WIDTH = 800;
 const int SCREEN_HEIGHT = 600;
 
+
+// Z-Buffer 로 사용될 float 배열
+// 화면 크기만큼 할당된다.
+unique_ptr<float[]> g_pDepthBuffer = nullptr;
+
 // 윈도우 프로시저 함수 선언
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
@@ -29,7 +34,8 @@ void ClearBuffer(BYTE r, BYTE g, BYTE b);
 void SetPixel(int x, int y, BYTE r, BYTE g, BYTE b);
 void Render(HWND hWnd);
 
-
+// 삼각형 출력 함수
+void DrawTriangle(const Triangle& tri3D, const Vec3& cameraPos, const Matrix& proj);
 
 // WinMain: 윈도우 애플리케이션의 시작점
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
@@ -134,6 +140,9 @@ void InitBackBuffer(HWND hWnd, int width, int height) {
     // g_hMemDC는 그리기를 요청받을 때, g_hBitmap에 그림을 그린다.
     SelectObject(g_hMemDC, g_hBitmap);
 
+    // Z-Buffer 생성.
+    g_pDepthBuffer = make_unique<float[]>(SCREEN_WIDTH * SCREEN_HEIGHT);
+
     // 처음에 사용한 윈도우 DC는 이제 사용하지 않으니 해제한다.
     ReleaseDC(hWnd, hdc);
 }
@@ -165,6 +174,11 @@ void ClearBuffer(BYTE r, BYTE g, BYTE b) {
             g_pPixels[idx + 1] = g;
             g_pPixels[idx + 2] = r;
             g_pPixels[idx + 3] = 255;
+
+            // 각 픽셀의 깊이 값 초기화.
+            // 아주 큰 값을 통해 어떤 픽셀이 들어와도 갱신 될것임.
+            // FLT_MAX인건 아직 아무것도 그려지지 않은 상태.
+            g_pDepthBuffer[y * SCREEN_WIDTH + x] = FLT_MAX;
         }
     }
 }
@@ -181,14 +195,6 @@ void SetPixel(int x, int y, BYTE r, BYTE g, BYTE b) {
 void Render(HWND hWnd) {
     ClearBuffer(255, 255, 255);
 
-    // Z = 5 위치에 삼각형을 그린다.
-    // 사용된 좌표는 월드 공간 좌표이다. (3D)
-    Triangle tri(Vec3(0, 1, 5), Vec3(1, -1, 7), Vec3(-1, -1, 3));
-
-    Vec3 cameraPos(0, 0, 0);
-    // 카메라와 삼각형이 마주보는지 확인한다. (Back-face Culling)
-    if (!tri.IsFrontFacing(cameraPos))   return;
-
     // 카메라의 종횡비와 근평면과 원평면 (절두체 시작부분과 끝부분 정도일려나)
     float aspect = static_cast<float>(SCREEN_WIDTH) / static_cast<float>(SCREEN_HEIGHT);
     float zNear = 1.0f;
@@ -196,37 +202,19 @@ void Render(HWND hWnd) {
     // 투영행렬 생성
     Matrix proj = Matrix::PerspectiveFovLH(PI / 2.0f, aspect, zNear, zFar);
 
-    // 클립 공간의 정점 생성 (클립 공간으로 변환)
-    // 클립 공간에서는 클리핑을 수행해야하지만 아직은 생략하고 넘어간다.
-    // 언제 클리핑을 하는가 ? EX) 삼각형의 정점들이 절두체의 원평면보다 뒤에 있다면 ? 그리지 않는다. 혹은 근평면보다 가깝다면 ? 그리지 않는다. 좌우로 벗어나도 똑같다.
-    Vec4 p0 = proj * Vec4(tri.vt0, 1.0f);
-    Vec4 p1 = proj * Vec4(tri.vt1, 1.0f);
-    Vec4 p2 = proj * Vec4(tri.vt2, 1.0f);
+    // 카메라 생성
+    Vec3 cameraPos(0, 0, 0);
 
-    // 원근 나눗셈을 통한 Vec3 변환
-    // NDC 좌표를 얻게된다.
-    Vec3 ndc0 = PerspectiveDivide(p0);
-    Vec3 ndc1 = PerspectiveDivide(p1);
-    Vec3 ndc2 = PerspectiveDivide(p2);
+    // Z = 5 위치에 삼각형을 그린다.
+    // 사용된 좌표는 월드 공간 좌표이다. (3D)
+    // Triangle tri(Vec3(0, 1, 5), Vec3(1, -1, 5), Vec3(-1, -1, 5));
 
-    // 뷰포트 변환을 통해 NDC좌표를 2D 스크린 좌표로 변환
-    tri.v0 = ViewportTransform(ndc0, SCREEN_WIDTH, SCREEN_HEIGHT);
-    tri.v1 = ViewportTransform(ndc1, SCREEN_WIDTH, SCREEN_HEIGHT);
-    tri.v2 = ViewportTransform(ndc2, SCREEN_WIDTH, SCREEN_HEIGHT);
+    // Z-Buffer 테스트를 위한 삼각형 2개
+    Triangle tri1(Vec3(0, 1, 4), Vec3(1.5f, -0.5f, 7), Vec3(-1, -1, 4));
+    Triangle tri2(Vec3(0.5f, 1.5f, 6), Vec3(1.5f, -0.5f, 6), Vec3(-0.5f, -0.5f, 6));
 
-    // 바운딩 박스 생성 (AABB를 이용한 2D좌표에서의 단순클리핑)
-    tri.SetBoundingBox(SCREEN_WIDTH, SCREEN_HEIGHT);
-
-    // 스크린 좌표의 픽셀이 삼각형 내부에 존재하는지 확인 후 무게 중심 좌표계를 통하여 색상 보간 색칠.
-    for (int x = tri.minX; x <= tri.maxX; x++) {
-        for (int y = tri.minY; y <= tri.maxY; y++) {
-            Vec2 point(static_cast<float>(x), static_cast<float>(y));
-            if (tri.IsInTriangle(point)) {
-                tri.ComputeBarycentric(point);
-                SetPixel(x, y, 255 * point.r, 255 * point.g, 255 *point.b);
-            }
-        }
-    }
+    DrawTriangle(tri2, cameraPos, proj);
+    DrawTriangle(tri1, cameraPos, proj);
 
     // 여기서 부턴 스크린 좌표에 삼각형 정점을 찍어 렌더링 후, 무게중심 좌표계를 통해 색상 보간 수행.
     /*
@@ -272,4 +260,61 @@ void Render(HWND hWnd) {
     SetPixel(600, 300, 255, 0, 0);
 
     */
+}
+
+void DrawTriangle(const Triangle& tri3D, const Vec3& cameraPos, const Matrix& proj) {
+    // 카메라와 삼각형이 마주보는지 확인한다. (Back-face Culling)
+    if (!tri3D.IsFrontFacing(cameraPos))   return;
+
+
+    // 클립 공간의 정점 생성 (클립 공간으로 변환)
+    // 클립 공간에서는 클리핑을 수행해야하지만 아직은 생략하고 넘어간다.
+    // 언제 클리핑을 하는가 ? EX) 삼각형의 정점들이 절두체의 원평면보다 뒤에 있다면 ? 그리지 않는다. 혹은 근평면보다 가깝다면 ? 그리지 않는다. 좌우로 벗어나도 똑같다.
+    Vec4 p0 = proj * Vec4(tri3D.vt0, 1.0f);
+    Vec4 p1 = proj * Vec4(tri3D.vt1, 1.0f);
+    Vec4 p2 = proj * Vec4(tri3D.vt2, 1.0f);
+
+    // 원근 나눗셈을 통한 Vec3 변환
+    // NDC 좌표를 얻게된다.
+    Vec3 ndc0 = PerspectiveDivide(p0);
+    Vec3 ndc1 = PerspectiveDivide(p1);
+    Vec3 ndc2 = PerspectiveDivide(p2);
+
+    // 뷰포트 변환을 통해 NDC좌표를 2D 스크린 좌표로 변환
+    Triangle tri;
+    tri.v0 = ViewportTransform(ndc0, SCREEN_WIDTH, SCREEN_HEIGHT);
+    tri.v1 = ViewportTransform(ndc1, SCREEN_WIDTH, SCREEN_HEIGHT);
+    tri.v2 = ViewportTransform(ndc2, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+    // 바운딩 박스 생성 (AABB를 이용한 2D좌표에서의 단순클리핑)
+    tri.SetBoundingBox(SCREEN_WIDTH, SCREEN_HEIGHT);
+
+    // 스크린 좌표의 픽셀이 삼각형 내부에 존재하는지 확인 후 무게 중심 좌표계를 통하여 색상 보간 색칠.
+    for (int x = tri.minX; x <= tri.maxX; x++) {
+        for (int y = tri.minY; y <= tri.maxY; y++) {
+            Vec2 point(static_cast<float>(x), static_cast<float>(y));
+            if (tri.IsInTriangle(point)) {
+                tri.ComputeBarycentric(point);
+
+                float a = point.r;
+                float b = point.g;
+                float c = point.b;
+
+                // z값을 무게중심좌표를 통해 보간한다.
+                // 이렇게 해주어야 각 정점의 z값에 알맞게 적절히 z-buffer 역할이 수행될것이다.
+                // 가령, 삼각형의 정점 중 하나가 뒤의 삼각형에 겹치게끔 되어 있다면, 그 겹치는 지점부터는 뒤의 삼각형이 보여야할것.
+                // z값 보간을 하지 않는다면, 겹치는 지점부터 뒤의 삼각형이 보이는게 아닌 그냥 뒤에 삼각형이 가려지게 될것이다.
+                // 해당 코드를 그대로 실행하면 겹쳐지는 부분부터 가려지는걸 확인가능하다.
+                // 아래 코드에서 if문에 ndc0.z 로 넣고, g_pDepthBuffer[idx]에 ndc0.z 로 넣어 보간을 수행하지 않도록 해보면
+                // 위의 주석의 말이 이해될것이다.
+                float z = ndc0.z * a + ndc1.z * b + ndc2.z * c;
+
+                int idx = y * SCREEN_WIDTH + x;
+                if (z < g_pDepthBuffer[idx]) {
+                    g_pDepthBuffer[idx] = z;
+                    SetPixel(x, y, 255 * a, 255 * b, 255 * c);
+                }
+            }
+        }
+    }
 }
