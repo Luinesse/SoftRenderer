@@ -35,7 +35,7 @@ void SetPixel(int x, int y, BYTE r, BYTE g, BYTE b);
 void Render(HWND hWnd);
 
 // 삼각형 출력 함수
-void DrawTriangle(const Triangle& tri3D, const Vec3& cameraPos, const Matrix& proj);
+void DrawTriangle(const Triangle& tri3D, const Vec3& cameraPos, const Matrix& proj, const Matrix& view);
 
 // WinMain: 윈도우 애플리케이션의 시작점
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
@@ -195,26 +195,50 @@ void SetPixel(int x, int y, BYTE r, BYTE g, BYTE b) {
 void Render(HWND hWnd) {
     ClearBuffer(255, 255, 255);
 
-    // 카메라의 종횡비와 근평면과 원평면 (절두체 시작부분과 끝부분 정도일려나)
+    // 화면의 종횡비와 근평면과 원평면 (절두체 시작부분과 끝부분 정도일려나)
     float aspect = static_cast<float>(SCREEN_WIDTH) / static_cast<float>(SCREEN_HEIGHT);
     float zNear = 1.0f;
     float zFar = 100.0f;
-    // 투영행렬 생성
-    Matrix proj = Matrix::PerspectiveFovLH(PI / 2.0f, aspect, zNear, zFar);
 
     // 카메라 생성
     Vec3 cameraPos(0, 0, 0);
+    Vec3 target(0, 0, 1);
+    Vec3 up(0, 1, 0);
+
+    // 뷰 행렬 생성
+    Matrix view = Matrix::LookAtLH(cameraPos, target, up);
+
+    // 투영행렬 생성
+    Matrix proj = Matrix::PerspectiveFovLH(PI / 2.0f, aspect, zNear, zFar);
+
+    // 삼각뿔 생성을 위한 정점 4개.
+    Vec3 v0(0, 1, 4.5);
+    Vec3 v1(-1, -1, 5);
+    Vec3 v2(1, -1, 5);
+    Vec3 v3(0, -1, 4);
+
+    // 삼각뿔의 면 생성
+    Triangle face1(v0, v1, v2);
+    Triangle face2(v0, v2, v3);
+    Triangle face3(v0, v3, v1);
+    Triangle face4(v1, v3, v2);
+
+    // 삼각뿔 그리기
+    DrawTriangle(face1, cameraPos, proj, view);
+    DrawTriangle(face2, cameraPos, proj, view);
+    DrawTriangle(face3, cameraPos, proj, view);
+    DrawTriangle(face4, cameraPos, proj, view);
 
     // Z = 5 위치에 삼각형을 그린다.
     // 사용된 좌표는 월드 공간 좌표이다. (3D)
     // Triangle tri(Vec3(0, 1, 5), Vec3(1, -1, 5), Vec3(-1, -1, 5));
 
     // Z-Buffer 테스트를 위한 삼각형 2개
-    Triangle tri1(Vec3(0, 1, 4), Vec3(1.5f, -0.5f, 7), Vec3(-1, -1, 4));
-    Triangle tri2(Vec3(0.5f, 1.5f, 6), Vec3(1.5f, -0.5f, 6), Vec3(-0.5f, -0.5f, 6));
-
-    DrawTriangle(tri2, cameraPos, proj);
-    DrawTriangle(tri1, cameraPos, proj);
+    // Triangle tri1(Vec3(0, 1, 4), Vec3(1.5f, -0.5f, 7), Vec3(-1, -1, 4));
+    // Triangle tri2(Vec3(0.5f, 1.5f, 6), Vec3(1.5f, -0.5f, 6), Vec3(-0.5f, -0.5f, 6));
+    // 
+    // DrawTriangle(tri2, cameraPos, proj);
+    // DrawTriangle(tri1, cameraPos, proj);
 
     // 여기서 부턴 스크린 좌표에 삼각형 정점을 찍어 렌더링 후, 무게중심 좌표계를 통해 색상 보간 수행.
     /*
@@ -235,16 +259,16 @@ void Render(HWND hWnd) {
         for (int y = tri.minY; y <= tri.maxY; y++) {
             Vec2 point(static_cast<float>(x), static_cast<float>(y));
 
-            
-            
+
+
             // 점 내부 판별 및 바운딩 박스 확인 코드
 
             // point가 삼각형 내부에 있는지 확인하고 있다면 파란색, 아니라면 빨간색으로 출력
             // 이를 통해 바운딩박스의 크기 확인 가능
             // if (tri.IsInTriangle(point)) SetPixel(x, y, 0, 0, 255);
             // else SetPixel(x, y, 255, 0, 0);
-            
-            
+
+
 
             if (tri.IsInTriangle(point)) {
                 // 해당 정점의 위치가 삼각형 내부에서 어느 정점에 가중치가 더 높은가
@@ -262,17 +286,18 @@ void Render(HWND hWnd) {
     */
 }
 
-void DrawTriangle(const Triangle& tri3D, const Vec3& cameraPos, const Matrix& proj) {
+void DrawTriangle(const Triangle& tri3D, const Vec3& cameraPos, const Matrix& proj, const Matrix& view) {
     // 카메라와 삼각형이 마주보는지 확인한다. (Back-face Culling)
     if (!tri3D.IsFrontFacing(cameraPos))   return;
-
 
     // 클립 공간의 정점 생성 (클립 공간으로 변환)
     // 클립 공간에서는 클리핑을 수행해야하지만 아직은 생략하고 넘어간다.
     // 언제 클리핑을 하는가 ? EX) 삼각형의 정점들이 절두체의 원평면보다 뒤에 있다면 ? 그리지 않는다. 혹은 근평면보다 가깝다면 ? 그리지 않는다. 좌우로 벗어나도 똑같다.
-    Vec4 p0 = proj * Vec4(tri3D.vt0, 1.0f);
-    Vec4 p1 = proj * Vec4(tri3D.vt1, 1.0f);
-    Vec4 p2 = proj * Vec4(tri3D.vt2, 1.0f);
+
+    // 뷰 행렬을 먼저 곱하고 그 결과에 투영 행렬이 곱해져야 하므로, 순서는 투영 행렬 * 뷰 행렬 * 모델
+    Vec4 p0 = proj * view * Vec4(tri3D.vt0, 1.0f);
+    Vec4 p1 = proj * view * Vec4(tri3D.vt1, 1.0f);
+    Vec4 p2 = proj * view * Vec4(tri3D.vt2, 1.0f);
 
     // 원근 나눗셈을 통한 Vec3 변환
     // NDC 좌표를 얻게된다.

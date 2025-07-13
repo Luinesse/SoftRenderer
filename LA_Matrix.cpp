@@ -125,6 +125,58 @@ Matrix Matrix::PerspectiveFovLH(float fovY, float aspect, float zNear, float zFa
 	return mat;
 }
 
+Matrix Matrix::LookAtLH(const Vec3& eye, const Vec3& target, const Vec3& up)
+{
+	// 카메라가 타깃을 바라보는 방향 (전방)
+	// A -> B 방향 벡터는 B - A 로 구할 수 있었다.
+	Vec3 zAxis = (target - eye).Normalize();
+
+	// 오른쪽 방향 (왼손 좌표계이므로 x축은 오른쪽이다.)
+	// 카메라의 위쪽 방향 벡터와 위에서 구한 전방방향 벡터의 외적으로 구해진다.
+	// 두 벡터의 외적은 두 벡터에 수직한 벡터를 구한다.
+	Vec3 xAxis = up.Cross(zAxis).Normalize();
+
+	// 위쪽 방향
+	// 벡터 외적으로 두 벡터에 수직한 벡터를 구한다.
+	Vec3 yAxis = zAxis.Cross(xAxis);          
+
+	// 위 과정으로 카메라를 기준으로 하는 새로운 직교 좌표계를 만든다. (기즈모 같은 느낌?)
+
+	Matrix view;
+
+	// 열 기준으로 구현됨. (DirectX. OpenGL 기준으로는 해당 행렬을 전치연산 수행하면 된다.)
+	// 1열 (Right)
+	// x축의 회전 정보 (0~2행)
+	// x축의 이동 정보 (3행)
+	// 이동 정보는 카메라와 뷰 공간에 정의한 x축과의 내적을 통해 투영 벡터의 길이를 구한다. (3D 공간에서의 Back-face Culling 할때를 떠올려보자)
+	// 구한 투영 벡터 길이만큼 뺄셈을 수행하여 카메라가 원점에 있게끔 한다. (뷰 행렬에서 물체가 움직이는건 카메라가 원점에 있고, 공간이 움직이는 형태가 될테니까)
+	view.m[0][0] = xAxis.x;
+	view.m[1][0] = xAxis.y;
+	view.m[2][0] = xAxis.z;
+	view.m[3][0] = -xAxis.Dot(eye);
+
+	// 2열 (Up)
+	view.m[0][1] = yAxis.x;
+	view.m[1][1] = yAxis.y;
+	view.m[2][1] = yAxis.z;
+	view.m[3][1] = -yAxis.Dot(eye);
+
+	// 3열 (Forward)
+	view.m[0][2] = zAxis.x;
+	view.m[1][2] = zAxis.y;
+	view.m[2][2] = zAxis.z;
+	view.m[3][2] = -zAxis.Dot(eye);
+
+	// 4열
+	// 고정값.
+	view.m[0][3] = 0.0f;
+	view.m[1][3] = 0.0f;
+	view.m[2][3] = 0.0f;
+	view.m[3][3] = 1.0f;
+
+	return view;
+}
+
 // 두 행렬의 곱
 
 Matrix Matrix::operator*(const Matrix& _m) const
