@@ -19,6 +19,18 @@ HDC g_hMemDC;
 const int SCREEN_WIDTH = 800;
 const int SCREEN_HEIGHT = 600;
 
+// 전역 변수 (회전 각)
+float g_Angle = 0.0f;
+
+// 전역 변수 (삼각뿔의 정점위치와 회전 후의 정점 위치)
+Vec3 TriangleVertex[4] = {
+    Vec3(0, 1, 4),
+    Vec3(-1, -1, 5),
+    Vec3(1, -1, 5),
+    Vec3(0, -1, 3)
+};
+
+Vec3 rotatedTriangle[4];
 
 // Z-Buffer 로 사용될 float 배열
 // 화면 크기만큼 할당된다.
@@ -33,6 +45,10 @@ void Present(HWND hWnd);
 void ClearBuffer(BYTE r, BYTE g, BYTE b);
 void SetPixel(int x, int y, BYTE r, BYTE g, BYTE b);
 void Render(HWND hWnd);
+
+// 회전을 위한 함수 선언
+void Update();
+float deg2rad(float rad);
 
 // 삼각형 출력 함수
 void DrawTriangle(const Triangle& tri3D, const Vec3& cameraPos, const Matrix& proj, const Matrix& view);
@@ -88,6 +104,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
     // 키들의 동시입력을 위해 if - else if가 아닌, if로만 구성
     switch (message) {
     case WM_TIMER: {
+        // 60 FPS 기준으로 프레임당 1도씩 회전
+        Update();
         InvalidateRect(hWnd, nullptr, FALSE);
         return 0;
     }
@@ -202,7 +220,7 @@ void Render(HWND hWnd) {
 
     // 카메라 생성
     Vec3 cameraPos(0, 0, 0);
-    Vec3 target(0, 0, 1);
+    Vec3 target(0, 0, 4);
     Vec3 up(0, 1, 0);
 
     // 뷰 행렬 생성
@@ -212,10 +230,11 @@ void Render(HWND hWnd) {
     Matrix proj = Matrix::PerspectiveFovLH(PI / 2.0f, aspect, zNear, zFar);
 
     // 삼각뿔 생성을 위한 정점 4개.
-    Vec3 v0(0, 1, 4.5);
-    Vec3 v1(-1, -1, 5);
-    Vec3 v2(1, -1, 5);
-    Vec3 v3(0, -1, 4);
+    // Update() 를 통해 회전 행렬이 적용된 좌표를 받는다.
+    Vec3 v0 = rotatedTriangle[0];
+    Vec3 v1 = rotatedTriangle[1];
+    Vec3 v2 = rotatedTriangle[2];
+    Vec3 v3 = rotatedTriangle[3];
 
     // 삼각뿔의 면 생성
     Triangle face1(v0, v1, v2);
@@ -342,4 +361,31 @@ void DrawTriangle(const Triangle& tri3D, const Vec3& cameraPos, const Matrix& pr
             }
         }
     }
+}
+
+void Update() {
+    g_Angle += 1.0f;
+    if (g_Angle > 360.0f) {
+        g_Angle -= 360.0f;
+    }
+
+    Matrix rot = Matrix::RotationY(deg2rad(g_Angle));
+
+    // 삼각뿔의 중심
+    Vec3 center = Vec3(0, 0, 4);
+
+    for (int i = 0; i < 4; i++) {
+        // 우리는 삼각뿔의 중심으로 돌리고 싶지만, 회전행렬은 원점을 기준으로 벡터의 방향을 바꾼다.
+        // 따라서, 정점의 값에 center 값을 빼주어 기준점을 원점으로 이동한다.
+        Vec3 local = TriangleVertex[i] - center;
+        // 기준점이 원점인 상태로 회전을 수행한다.
+        Vec4 tmpVec = rot * Vec4(local, 1.0f);
+        // 다시 center를 더하여 기준점을 원점에서 center로 옮겨준다.
+        rotatedTriangle[i] = Vec3(tmpVec.x, tmpVec.y, tmpVec.z) + center;
+    }
+}
+
+// 호도법 변환
+float deg2rad(float rad) {
+    return rad * (PI / 180);
 }
