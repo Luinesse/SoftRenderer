@@ -3,6 +3,7 @@
 #include "LA_Matrix.h"
 #include "Triangle.h"
 #include "RenderingUtils.h"
+#include "Texture.h"
 
 #define PI 3.14
 
@@ -22,12 +23,17 @@ const int SCREEN_HEIGHT = 600;
 // 전역 변수 (회전 각)
 float g_Angle = 0.0f;
 
+// 전역 변수 (스케일 값)
+float g_DefaultScale = 1.0f;
+float g_ChangeScale = 0.01f;
+
 // 전역 변수 (삼각뿔의 정점위치와 회전 후의 정점 위치)
+// 텍스처 매핑을 위해 uv좌표가 추가됐습니다. (LA_Vector의 Vec3 클래스 참고)
 Vec3 TriangleVertex[4] = {
-    Vec3(0, 1, 4),
-    Vec3(-1, -1, 5),
-    Vec3(1, -1, 5),
-    Vec3(0, -1, 3)
+    Vec3(0, 1, 4, Vec2(0.5f, 0.0f)),
+    Vec3(-1, -1, 5, Vec2(0.0f, 1.0f)),
+    Vec3(1, -1, 5, Vec2(1.0f, 1.0f)),
+    Vec3(0, -1, 3, Vec2(0.5f, 1.0f))
 };
 
 Vec3 rotatedTriangle[4];
@@ -35,6 +41,9 @@ Vec3 rotatedTriangle[4];
 // Z-Buffer 로 사용될 float 배열
 // 화면 크기만큼 할당된다.
 unique_ptr<float[]> g_pDepthBuffer = nullptr;
+
+// 전역 변수 (텍스처)
+Texture g_Texture;
 
 // 윈도우 프로시저 함수 선언
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
@@ -84,6 +93,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     }
 
     InitBackBuffer(hWnd, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+    // 텍스처의 로딩 시도
+    if (!g_Texture.LoadFromBMP(L"Test.bmp")) {
+        MessageBox(NULL, L"텍스처 로딩 실패", L"오류", MB_OK);
+        return 0;
+    }
 
     SetTimer(hWnd, 1, 16, NULL);
 
@@ -355,8 +370,22 @@ void DrawTriangle(const Triangle& tri3D, const Vec3& cameraPos, const Matrix& pr
 
                 int idx = y * SCREEN_WIDTH + x;
                 if (z < g_pDepthBuffer[idx]) {
+                    // uv 값도 무게 중심 좌표계로 똑같이 보간해준다.
+                    Vec2 uv0 = tri3D.vt0.uv;
+                    Vec2 uv1 = tri3D.vt1.uv;
+                    Vec2 uv2 = tri3D.vt2.uv;
+                    float u = uv0.x * a + uv1.x * b + uv2.x * c;
+                    float v = uv0.y * a + uv1.y * b + uv2.y * c;
+
+                    // 보간된 uv좌표를 스크린 좌표로 변환하여 생긴 값을 얻는다.
+                    COLORREF c = g_Texture.Sample(u, v);
+                    // 그 값에서 rgb 값을 얻어와서 그린다.
+                    BYTE r = GetRValue(c);
+                    BYTE g = GetGValue(c);
+                    BYTE b = GetBValue(c);
+
                     g_pDepthBuffer[idx] = z;
-                    SetPixel(x, y, 255 * a, 255 * b, 255 * c);
+                    SetPixel(x, y, r, g, b);
                 }
             }
         }
@@ -365,11 +394,21 @@ void DrawTriangle(const Triangle& tri3D, const Vec3& cameraPos, const Matrix& pr
 
 void Update() {
     g_Angle += 1.0f;
+    g_DefaultScale += g_ChangeScale;
     if (g_Angle > 360.0f) {
         g_Angle -= 360.0f;
     }
 
+    if (g_DefaultScale >= 1.5f) {
+        g_ChangeScale *= -1;
+    }
+
+    if (g_DefaultScale <= 0.5f) {
+        g_ChangeScale *= -1;
+    }
+
     Matrix rot = Matrix::RotationY(deg2rad(g_Angle));
+    Matrix scale = Matrix::Scale(g_DefaultScale, g_DefaultScale, g_DefaultScale);
 
     // 삼각뿔의 중심
     Vec3 center = Vec3(0, 0, 4);
@@ -379,9 +418,11 @@ void Update() {
         // 따라서, 정점의 값에 center 값을 빼주어 기준점을 원점으로 이동한다.
         Vec3 local = TriangleVertex[i] - center;
         // 기준점이 원점인 상태로 회전을 수행한다.
-        Vec4 tmpVec = rot * Vec4(local, 1.0f);
+        // 크기 변환 행렬도 여기에 곱해준다.
+        Vec4 tmpVec = scale * rot * Vec4(local, 1.0f);
         // 다시 center를 더하여 기준점을 원점에서 center로 옮겨준다.
         rotatedTriangle[i] = Vec3(tmpVec.x, tmpVec.y, tmpVec.z) + center;
+        rotatedTriangle[i].uv = TriangleVertex[i].uv;
     }
 }
 
